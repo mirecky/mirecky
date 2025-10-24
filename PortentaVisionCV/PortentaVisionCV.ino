@@ -9,6 +9,7 @@
   - Grayscale conversion
   - Edge detection (Sobel filter)
   - Motion detection
+  - TinyML inference (TensorFlow Lite Micro)
   - Serial image preview
 
   Hardware Required:
@@ -18,9 +19,18 @@
   Libraries Required:
   - Arduino_PortentaVision or camera library
   - Arduino Mbed OS Portenta Boards
+  - Arduino_TensorFlowLite (for TinyML features)
 */
 
 #include "camera.h"
+
+// Uncomment to enable TinyML features
+// Requires Arduino_TensorFlowLite library
+// #define ENABLE_TINYML
+
+#ifdef ENABLE_TINYML
+  #include "tinyml_inference.h"
+#endif
 
 // Camera resolution settings
 // QVGA = 320x240, VGA = 640x480, QQVGA = 160x120
@@ -37,7 +47,8 @@ enum CVMode {
   MODE_RAW,           // Raw camera feed
   MODE_GRAYSCALE,     // Grayscale conversion
   MODE_EDGE_DETECT,   // Sobel edge detection
-  MODE_MOTION_DETECT  // Simple motion detection
+  MODE_MOTION_DETECT, // Simple motion detection
+  MODE_TINYML        // TinyML inference
 };
 
 CVMode currentMode = MODE_GRAYSCALE;
@@ -46,6 +57,11 @@ CVMode currentMode = MODE_GRAYSCALE;
 uint8_t previous_frame[CAMERA_WIDTH * CAMERA_HEIGHT];
 bool has_previous_frame = false;
 int motion_threshold = 30;
+
+// TinyML variables
+bool tinyml_initialized = false;
+int inference_interval = 1000;  // Run inference every 1000ms
+unsigned long last_inference_millis = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -63,13 +79,31 @@ void setup() {
   }
 
   Serial.println("Camera initialized successfully");
+
+#ifdef ENABLE_TINYML
+  // Initialize TinyML
+  Serial.println("\nInitializing TinyML...");
+  tinyml_initialized = initTinyML();
+  if (tinyml_initialized) {
+    Serial.println("TinyML ready!");
+  } else {
+    Serial.println("WARNING: TinyML initialization failed - mode disabled");
+  }
+#endif
+
   Serial.println("\nCommands:");
   Serial.println("  '1' - Raw camera feed");
   Serial.println("  '2' - Grayscale mode");
   Serial.println("  '3' - Edge detection");
   Serial.println("  '4' - Motion detection");
+#ifdef ENABLE_TINYML
+  Serial.println("  '5' - TinyML inference");
+#endif
   Serial.println("  'c' - Capture and display frame info");
   Serial.println("  's' - Show frame statistics");
+#ifdef ENABLE_TINYML
+  Serial.println("  'm' - Show TinyML memory usage");
+#endif
   Serial.println();
 }
 
@@ -120,6 +154,15 @@ void processFrame() {
     case MODE_MOTION_DETECT:
       convertToGrayscale();
       detectMotion();
+      break;
+
+    case MODE_TINYML:
+#ifdef ENABLE_TINYML
+      runTinyMLInference();
+#else
+      Serial.println("TinyML not enabled. Define ENABLE_TINYML and install Arduino_TensorFlowLite");
+      currentMode = MODE_GRAYSCALE;
+#endif
       break;
   }
 }
@@ -224,12 +267,37 @@ void handleCommand(char cmd) {
       Serial.println("Mode: MOTION DETECTION");
       break;
 
+    case '5':
+#ifdef ENABLE_TINYML
+      if (tinyml_initialized) {
+        currentMode = MODE_TINYML;
+        Serial.println("Mode: TINYML INFERENCE");
+      } else {
+        Serial.println("ERROR: TinyML not initialized");
+      }
+#else
+      Serial.println("TinyML not enabled. Define ENABLE_TINYML in sketch");
+#endif
+      break;
+
     case 'c':
       captureFrameInfo();
       break;
 
     case 's':
       showStatistics();
+      break;
+
+    case 'm':
+#ifdef ENABLE_TINYML
+      if (tinyml_initialized) {
+        printMemoryUsage();
+      } else {
+        Serial.println("TinyML not initialized");
+      }
+#else
+      Serial.println("TinyML not enabled");
+#endif
       break;
 
     default:
@@ -253,9 +321,38 @@ void captureFrameInfo() {
     case MODE_GRAYSCALE: Serial.println("GRAYSCALE"); break;
     case MODE_EDGE_DETECT: Serial.println("EDGE DETECTION"); break;
     case MODE_MOTION_DETECT: Serial.println("MOTION DETECTION"); break;
+    case MODE_TINYML: Serial.println("TINYML INFERENCE"); break;
   }
   Serial.println("========================\n");
 }
+
+#ifdef ENABLE_TINYML
+/*
+  Run TinyML inference with rate limiting
+*/
+void runTinyMLInference() {
+  unsigned long current_millis = millis();
+
+  // Rate limit inference to prevent overwhelming the system
+  if (current_millis - last_inference_millis < inference_interval) {
+    Serial.print(".");
+    return;
+  }
+
+  last_inference_millis = current_millis;
+
+  // Convert to grayscale first
+  convertToGrayscale();
+
+  // Run inference
+  Serial.println("\nRunning inference...");
+  if (runInference(grayscale_buffer, CAMERA_WIDTH, CAMERA_HEIGHT)) {
+    printInferenceResults();
+  } else {
+    Serial.println("Inference failed!");
+  }
+}
+#endif
 
 void showStatistics() {
   if (currentMode == MODE_RAW) {

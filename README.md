@@ -1,6 +1,6 @@
 # Portenta H7 Vision Shield - Computer Vision Starter Project
 
-A beginner-friendly computer vision project for the Arduino Portenta H7 with Vision Shield. This project demonstrates basic CV operations including grayscale conversion, edge detection, and motion detection.
+A beginner-friendly computer vision project for the Arduino Portenta H7 with Vision Shield. This project demonstrates basic CV operations including grayscale conversion, edge detection, motion detection, and TinyML inference.
 
 ## Hardware Requirements
 
@@ -26,6 +26,7 @@ A beginner-friendly computer vision project for the Arduino Portenta H7 with Vis
    - Open: Tools > Manage Libraries
    - Search and install:
      - `Arduino_PortentaVision` or `Himax` (camera library)
+     - `Arduino_TensorFlowLite` (optional, for TinyML features)
      - May vary depending on your Vision Shield version
 
 4. **Select Board**
@@ -36,9 +37,18 @@ A beginner-friendly computer vision project for the Arduino Portenta H7 with Vis
 ## Project Structure
 
 ```
-PortentaVisionCV/
-├── PortentaVisionCV.ino    # Main sketch with CV algorithms
-└── camera.h                 # Camera abstraction layer
+mirecky/
+├── PortentaVisionCV/
+│   ├── PortentaVisionCV.ino    # Main sketch with CV algorithms
+│   ├── camera.h                 # Camera abstraction layer
+│   ├── tinyml_model.h          # TinyML model data (placeholder)
+│   └── tinyml_inference.h      # TinyML inference engine
+├── scripts/
+│   ├── convert_to_c_array.py   # Convert .tflite to C array
+│   ├── train_example_model.py  # Example training script
+│   └── README.md               # Scripts documentation
+├── TinyML_Guide.md             # Comprehensive TinyML guide
+└── README.md                   # This file
 ```
 
 ## Features
@@ -63,6 +73,12 @@ PortentaVisionCV/
 - Detects moving objects by comparing consecutive frames
 - Adjustable sensitivity threshold
 
+### 5. TinyML Inference (Optional)
+- On-device machine learning with TensorFlow Lite Micro
+- Deploy custom trained models (person detection, object classification, etc.)
+- Real-time inference on camera frames
+- See [TinyML_Guide.md](TinyML_Guide.md) for setup instructions
+
 ## Usage
 
 ### Upload the Sketch
@@ -82,8 +98,10 @@ Open Serial Monitor at **115200 baud** and use these commands:
 | `2` | Switch to GRAYSCALE mode |
 | `3` | Switch to EDGE DETECTION mode |
 | `4` | Switch to MOTION DETECTION mode |
+| `5` | Switch to TINYML INFERENCE mode (if enabled) |
 | `c` | Capture and display current frame info |
 | `s` | Show frame statistics (brightness, range, etc.) |
+| `m` | Show TinyML memory usage (if enabled) |
 
 ### Example Session
 
@@ -164,6 +182,29 @@ Compares consecutive frames to detect changes:
 3. Count pixels exceeding threshold
 4. Report if motion percentage exceeds limit
 
+## TinyML Integration
+
+This project includes full TinyML support for deploying custom machine learning models!
+
+### Quick Start
+
+1. **Enable TinyML**: Uncomment `#define ENABLE_TINYML` in `PortentaVisionCV.ino`
+2. **Install Library**: `Arduino_TensorFlowLite` via Library Manager
+3. **Deploy Model**: See [TinyML_Guide.md](TinyML_Guide.md) for complete instructions
+
+### What You Can Do
+
+- **Person Detection**: Detect when people are in view
+- **Object Classification**: Identify common objects
+- **Gesture Recognition**: Recognize hand gestures
+- **Custom Models**: Train and deploy your own models
+
+### Resources
+
+- [TinyML_Guide.md](TinyML_Guide.md) - Complete guide to training and deploying models
+- [scripts/](scripts/) - Helper scripts for model conversion
+- [TensorFlow Lite for Microcontrollers](https://www.tensorflow.org/lite/microcontrollers)
+
 ## Extending This Project
 
 ### Ideas for Enhancement
@@ -173,24 +214,25 @@ Compares consecutive frames to detect changes:
    - Track object position across frames
 
 2. **Face Detection**
-   - Integrate Haar cascade or simple skin-tone detection
-   - Track face position
+   - Use TinyML face detection model
+   - Track face position and count faces
 
 3. **QR Code / Barcode Reading**
    - Use ZXing or similar library
    - Decode data from camera
 
-4. **TinyML Integration**
-   - Deploy TensorFlow Lite models
-   - Object classification or detection
+4. **Custom TinyML Models**
+   - Train models for specific objects (coffee mug, phone, etc.)
+   - Deploy gesture recognition for device control
+   - Anomaly detection for industrial applications
 
 5. **Line Following**
    - Detect lines in grayscale images
    - Calculate robot steering angles
 
-6. **Gesture Recognition**
-   - Combine motion detection with pattern recognition
-   - Control devices with hand gestures
+6. **Multi-modal Sensing**
+   - Combine camera with other sensors
+   - Sensor fusion with IMU data
 
 ## Troubleshooting
 
@@ -220,15 +262,23 @@ Processing times (approximate, at 320x240):
 - **Grayscale conversion**: ~5ms
 - **Edge detection**: ~30ms
 - **Motion detection**: ~15ms
+- **TinyML inference**: ~50-500ms (depends on model complexity)
 
-The main loop includes a 100ms delay to prevent overwhelming the processor. Adjust based on your needs.
+The main loop includes a 100ms delay to prevent overwhelming the processor. TinyML inference is rate-limited to run every 1 second by default. Adjust based on your needs.
 
 ## Resources
 
+### Hardware & Software
 - [Portenta H7 Documentation](https://docs.arduino.cc/hardware/portenta-h7)
 - [Vision Shield Documentation](https://docs.arduino.cc/hardware/portenta-vision-shield)
 - [OpenMV Documentation](https://docs.openmv.io/) - Alternative firmware with more CV features
 - [Computer Vision Fundamentals](https://opencv.org/)
+
+### TinyML Resources
+- [TinyML_Guide.md](TinyML_Guide.md) - Complete guide included in this project
+- [TensorFlow Lite for Microcontrollers](https://www.tensorflow.org/lite/microcontrollers)
+- [Edge Impulse](https://edgeimpulse.com/) - Visual ML training platform
+- [TinyML Book](https://tinymlbook.com/)
 
 ## License
 
