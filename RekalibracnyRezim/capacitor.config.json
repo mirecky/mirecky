@@ -1,0 +1,9 @@
+{
+  "appId": "sk.rekalibracia.casovac",
+  "appName": "Rekalibračný režim",
+  "webDir": "dist",
+  "backgroundColor": "#191512",
+  "android": {
+    "backgroundColor": "#191512"
+  }
+}
