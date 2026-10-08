@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Rekalibračný režim</string>
+    <string name="title_activity_main">Rekalibračný režim</string>
+    <string name="package_name">sk.rekalibracia.casovac</string>
+    <string name="custom_url_scheme">sk.rekalibracia.casovac</string>
+</resources>
