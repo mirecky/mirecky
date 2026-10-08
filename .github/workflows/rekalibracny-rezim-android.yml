@@ -10,6 +10,8 @@ on:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: RekalibracnyRezim
@@ -38,3 +40,17 @@ jobs:
         with:
           name: rekalibracny-rezim-apk
           path: RekalibracnyRezim/android/app/build/outputs/apk/debug/app-debug.apk
+
+      # Stály odkaz na stiahnutie do mobilu (bez ZIP-u a prihlásenia):
+      # https://github.com/<repo>/releases/download/rekalibracny-rezim/rekalibracny-rezim.apk
+      - name: Zverejnenie APK ako release
+        working-directory: RekalibracnyRezim
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk rekalibracny-rezim.apk
+          gh release delete rekalibracny-rezim --yes --cleanup-tag || true
+          gh release create rekalibracny-rezim rekalibracny-rezim.apk \
+            --target "$GITHUB_SHA" \
+            --title "Rekalibračný režim – APK" \
+            --notes "Zostavené z ${GITHUB_REF_NAME} (${GITHUB_SHA::7})."

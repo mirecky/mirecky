@@ -4,11 +4,10 @@
 
 ## Inštalácia do telefónu
 
-1. Na GitHube otvor záložku **Actions → Rekalibračný režim – Android APK**.
-2. V poslednom úspešnom behu stiahni artefakt `rekalibracny-rezim-apk` (ZIP obsahuje `app-debug.apk`).
-3. Súbor prenes do telefónu a otvor ho. Android si vyžiada povolenie *Inštalovať neznáme aplikácie* pre prehliadač alebo správcu súborov.
+1. V telefóne otvor priamy odkaz: <https://github.com/mirecky/mirecky/releases/download/rekalibracny-rezim/rekalibracny-rezim.apk>
+2. Stiahnutý súbor `rekalibracny-rezim.apk` otvor. Android si vyžiada povolenie *Inštalovať neznáme aplikácie* pre prehliadač alebo správcu súborov.
 
-Build sa spúšťa automaticky pri každej zmene v priečinku `RekalibracnyRezim/`, prípadne ručne cez *Run workflow*.
+Odkaz vždy ukazuje na posledný úspešný build (spúšťa sa pri každej zmene v priečinku `RekalibracnyRezim/`, prípadne ručne cez *Actions → Run workflow*).
 
 ## Správanie na Androide
 
