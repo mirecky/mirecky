@@ -15,7 +15,7 @@ Build sa spúšťa automaticky pri každej zmene v priečinku `RekalibracnyRezim
 | Funkcia | Riešenie |
 |---|---|
 | Obrazovka nezhasne počas behu | plugin `@capacitor-community/keep-awake` |
-| Denník (posledných 50 záznamov) | `@capacitor/preferences`, uložené lokálne v telefóne |
+| Denník (posledných 50 záznamov) | `@capacitor/preferences` – súkromné úložisko aplikácie (`shared_prefs/CapacitorStorage.xml`), nikam sa neodosiela; záznamy sa dajú mazať jednotlivo (✕) aj naraz (*Vymazať celý denník*) |
 | Systémové tlačidlo Späť | skryje podrobný postup → pozastaví časovač → minimalizuje aplikáciu |
 | Orientácia | iba na výšku |
 
