@@ -16,6 +16,16 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Pevný debug kľúč v repozitári: každý build z CI má rovnaký podpis,
+    // takže nové APK sa dá nainštalovať ako aktualizácia (denník ostane).
+    signingConfigs {
+        debug {
+            storeFile file("rekalibracia-debug.keystore")
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false

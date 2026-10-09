@@ -4,18 +4,19 @@
 
 ## Inštalácia do telefónu
 
-1. Na GitHube otvor záložku **Actions → Rekalibračný režim – Android APK**.
-2. V poslednom úspešnom behu stiahni artefakt `rekalibracny-rezim-apk` (ZIP obsahuje `app-debug.apk`).
-3. Súbor prenes do telefónu a otvor ho. Android si vyžiada povolenie *Inštalovať neznáme aplikácie* pre prehliadač alebo správcu súborov.
+1. V telefóne otvor priamy odkaz: <https://github.com/mirecky/mirecky/releases/download/rekalibracny-rezim/rekalibracny-rezim.apk>
+2. Stiahnutý súbor `rekalibracny-rezim.apk` otvor. Android si vyžiada povolenie *Inštalovať neznáme aplikácie* pre prehliadač alebo správcu súborov.
 
-Build sa spúšťa automaticky pri každej zmene v priečinku `RekalibracnyRezim/`, prípadne ručne cez *Run workflow*.
+Odkaz vždy ukazuje na posledný úspešný build (spúšťa sa pri každej zmene v priečinku `RekalibracnyRezim/`, prípadne ručne cez *Actions → Run workflow*).
+
+Všetky buildy sú podpísané rovnakým ladiacim kľúčom (`android/app/rekalibracia-debug.keystore`), takže nová verzia sa nainštaluje ako aktualizácia a denník ostane zachovaný. Kľúč je verejný a slúži len na tento účel – nie je určený na publikovanie v Google Play.
 
 ## Správanie na Androide
 
 | Funkcia | Riešenie |
 |---|---|
 | Obrazovka nezhasne počas behu | plugin `@capacitor-community/keep-awake` |
-| Denník (posledných 50 záznamov) | `@capacitor/preferences`, uložené lokálne v telefóne |
+| Denník (posledných 50 záznamov) | `@capacitor/preferences` – súkromné úložisko aplikácie (`shared_prefs/CapacitorStorage.xml`), nikam sa neodosiela; záznamy sa dajú mazať jednotlivo (✕) aj naraz (*Vymazať celý denník*) |
 | Systémové tlačidlo Späť | skryje podrobný postup → pozastaví časovač → minimalizuje aplikáciu |
 | Orientácia | iba na výšku |
 

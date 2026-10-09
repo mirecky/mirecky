@@ -292,18 +292,30 @@ export default function RecalibrationTimer() {
       } catch (e) {}
     })();
   }, []);
-  const saveEntry = async () => {
-    const entry = {
-      date: new Date().toISOString().slice(0, 16).replace("T", " "),
-      tags,
-      note: note.trim(),
-      duration: fmt(totalElapsed),
-    };
-    const next = [entry, ...entries].slice(0, 50);
+  const persistEntries = async (next) => {
     setEntries(next);
     try {
       await storage.set("rekalibracia-dennik", JSON.stringify(next));
     } catch (e) {}
+  };
+  const deleteEntry = (i) => {
+    if (window.confirm("Vymazať tento záznam?")) persistEntries(entries.filter((_, j) => j !== i));
+  };
+  const clearEntries = () => {
+    if (window.confirm("Vymazať celý denník? Túto akciu nie je možné vrátiť.")) {
+      persistEntries([]);
+      setShowLog(false);
+    }
+  };
+  const saveEntry = async () => {
+    const now = new Date();
+    const entry = {
+      date: new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16).replace("T", " "),
+      tags,
+      note: note.trim(),
+      duration: fmt(totalElapsed),
+    };
+    await persistEntries([entry, ...entries].slice(0, 50));
     setTags([]);
     setNote("");
     setStatus("done");
@@ -544,6 +556,7 @@ export default function RecalibrationTimer() {
     modal: { background: "#241E19", borderRadius: 18, padding: "28px 26px", maxWidth: 340, width: "88%", textAlign: "center" },
     tag: (on) => ({ border: "1px solid " + (on ? "#7FA98E" : "#3A322B"), background: on ? "rgba(127,169,142,.15)" : "transparent", color: on ? "#A8CBB5" : "#8A7D6C", borderRadius: 20, padding: "8px 14px", fontSize: 14, cursor: "pointer" }),
     textarea: { width: "100%", boxSizing: "border-box", background: "#191512", border: "1px solid #3A322B", borderRadius: 10, color: "#EFE6D8", padding: 12, fontSize: 15, minHeight: 80, fontFamily: "inherit", resize: "vertical" },
+    del: { border: "1px solid #3A322B", background: "transparent", color: "#8A7D6C", borderRadius: 8, padding: "2px 10px", fontSize: 13, cursor: "pointer" },
     entry: { textAlign: "left", padding: "10px 0", borderBottom: "1px solid #332B24", fontSize: 14 },
   };
 
@@ -683,16 +696,26 @@ export default function RecalibrationTimer() {
                 Denník ({entries.length}) {showLog ? "▲" : "▼"}
               </div>
               {showLog &&
-                entries.slice(0, 5).map((en, i) => (
+                entries.map((en, i) => (
                   <div key={i} style={S.entry}>
-                    <div style={{ opacity: 0.5, fontSize: 12, marginBottom: 2 }}>
-                      {en.date}
-                      {en.duration ? ` · ${en.duration}` : ""}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+                      <span style={{ opacity: 0.5, fontSize: 12 }}>
+                        {en.date}
+                        {en.duration ? ` · ${en.duration}` : ""}
+                      </span>
+                      <button style={S.del} onClick={() => deleteEntry(i)} aria-label="Vymazať záznam">
+                        ✕
+                      </button>
                     </div>
                     {en.tags?.length > 0 && <div style={{ color: "#A8CBB5", marginBottom: 2 }}>{en.tags.join(" · ")}</div>}
                     {en.note && <div>{en.note}</div>}
                   </div>
                 ))}
+              {showLog && (
+                <button style={{ ...S.del, width: "100%", marginTop: 12, padding: "10px 0", fontSize: 14 }} onClick={clearEntries}>
+                  Vymazať celý denník
+                </button>
+              )}
             </div>
           )}
 
