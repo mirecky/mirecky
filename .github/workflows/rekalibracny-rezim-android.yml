@@ -53,4 +53,4 @@ jobs:
           gh release create rekalibracny-rezim rekalibracny-rezim.apk \
             --target "$GITHUB_SHA" \
             --title "Rekalibračný režim – APK" \
-            --notes "Zostavené z ${GITHUB_REF_NAME} (${GITHUB_SHA::7})."
+            --notes "Zostavené z ${GITHUB_REF_NAME} (${GITHUB_SHA::7}). Nainštaluj ako aktualizáciu; denník ostane zachovaný."

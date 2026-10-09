@@ -9,6 +9,8 @@
 
 Odkaz vždy ukazuje na posledný úspešný build (spúšťa sa pri každej zmene v priečinku `RekalibracnyRezim/`, prípadne ručne cez *Actions → Run workflow*).
 
+Všetky buildy sú podpísané rovnakým ladiacim kľúčom (`android/app/rekalibracia-debug.keystore`), takže nová verzia sa nainštaluje ako aktualizácia a denník ostane zachovaný. Kľúč je verejný a slúži len na tento účel – nie je určený na publikovanie v Google Play.
+
 ## Správanie na Androide
 
 | Funkcia | Riešenie |
