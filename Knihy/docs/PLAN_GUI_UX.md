@@ -1,6 +1,8 @@
 # Knihy – návrh GUI a UX
 
-*Pracovný dokument, verzia 0.1 (17. 11. 2026). Slúži ako východisko pre implementáciu Android aplikácie na správu osobnej knižnice a čítanie elektronických kníh.*
+*Pracovný dokument, verzia 0.2 (17. 11. 2026). Zmeny oproti 0.1: priorita fyzickej knižnice, synchronizácia od prvej verzie, nová kapitola 4 o ukladaní dát.*
+
+*Slúži ako východisko pre implementáciu Android aplikácie na správu osobnej knižnice a čítanie elektronických kníh.*
 
 ---
 
@@ -14,8 +16,9 @@ Aplikácia **Knihy** zjednocuje tri funkcie, ktoré používateľ dnes rieši v 
 
 Princípy návrhu:
 
-- **Offline-first.** Všetky údaje sú lokálne; sieť sa používa iba na doplnenie metadát a obálok.
-- **Súkromie.** Žiadny povinný účet, žiadna telemetria. Synchronizácia je voliteľná a pod kontrolou používateľa.
+- **Fyzická knižnica na prvom mieste.** Väčšinu fondu tvoria tlačené knihy; katalóg, umiestnenie a výpožičky majú prednosť pred čítačkou.
+- **Local-first so synchronizáciou.** Aplikácia funguje plne offline. Zmeny sa synchronizujú na úložisko, ktoré si používateľ zvolí, takže reinštalácia ani výmena telefónu neznamenajú stratu dát.
+- **Súkromie.** Žiadna telemetria, žiadny server prevádzkovaný autorom aplikácie. Dáta ležia výlučne na zariadeniach používateľa a v jeho vlastnom úložisku.
 - **Rýchlosť pridania.** Od otvorenia aplikácie po uloženú knihu má stačiť do 10 sekúnd (sken → potvrdenie).
 - **Čítačka je hlavná obrazovka, nie doplnok.** Prechod „Pokračovať v čítaní“ musí byť dostupný jedným ťuknutím.
 
@@ -32,6 +35,7 @@ Princípy návrhu:
 | Obálky | Open Library Covers / Google Books; vlastná fotografia cez CameraX | Fotografia s automatickou detekciou okrajov a korekciou perspektívy (ML Kit Document Scanner). |
 | EPUB | **Readium Kotlin Toolkit** | Zrelá knižnica, `Locator` (CFI) na presné ukotvenie anotácií, podpora reflowu, tém a TTS. |
 | PDF | **Readium (PDF adaptér s PdfiumAndroid)** alebo `androidx.pdf` | Jednotné API pre obe formáty; anotácie ako vlastná vrstva v databáze (nie zápis do súboru – súbor ostáva nedotknutý). |
+| Synchronizácia | Vlastný synchronizačný modul (žurnál zmien) s výmenným transportom; prvý transport **WebDAV** (Nextcloud a pod.) alebo **Google Drive `appDataFolder`** – pozri kap. 4 | Osvedčený model (Joplin, KOReader), nezávislý od konkrétneho poskytovateľa. |
 | Pripomienky | **WorkManager** + `AlarmManager.setExactAndAllowWhileIdle` pre presný čas | Spoľahlivé aj po reštarte zariadenia. |
 | Architektúra | MVVM / UDF, Hilt, moduly `core-db`, `core-meta`, `feature-library`, `feature-reader`, `feature-plan` | Oddelenie čítačky od katalógu uľahčí testovanie. |
 | Min. SDK | 26 (Android 8.0) | Pokrytie >95 % zariadení. |
@@ -57,9 +61,59 @@ Book ──< Edition ──< File (PDF/EPUB, cesta cez SAF URI)
 
 Rozlíšenie **Book** (dielo) a **Edition** (konkrétne vydanie s ISBN) je dôležité: jedno dielo môže mať tlačenú aj elektronickú verziu, pričom stav čítania a anotácie patria k dielu, kým ISBN a stránkovanie k vydaniu.
 
+Pre synchronizáciu má každá entita od začiatku tieto polia: `id` (UUID, nie autoinkrement), `updatedAt` (hybridné logické hodiny), `deviceId` a `deleted` (tombstone namiesto fyzického zmazania). Doplnenie týchto polí dodatočne by si vyžiadalo migráciu celej databázy, preto sú súčasťou etapy 1. Vznikne tiež entita **Copy** (exemplár) pod **Edition**: pri fyzických knihách sa umiestnenie, stav exemplára a výpožička viažu na konkrétny kus, nie na vydanie.
+
 ---
 
-## 4. Stavy čítania – návrh terminológie
+## 4. Ukladanie dát a obnova po reinštalácii
+
+### 4.1 Východiskový problém
+
+Android pri odinštalovaní aplikácie **vymaže jej súkromný priečinok** (`/data/data/…`), teda aj databázu, obálky a nastavenia. Systémová záloha *Android Auto Backup* je obmedzená na 25 MB, nie je zaručená na všetkých zariadeniach a obnovuje sa iba pri prvej inštalácii z rovnakého Google účtu. Ako jediná ochrana preto nestačí.
+
+### 4.2 Kde budú jednotlivé dáta
+
+| Dáta | Pracovné umiestnenie (rýchly prístup) | Trvalé umiestnenie (prežije reinštaláciu) |
+|---|---|---|
+| Katalóg, stavy, plány, anotácie, relácie | Room databáza v súkromnom priečinku | **Synchronizačné úložisko** (žurnál zmien + pravidelný snímok) |
+| Obálky (komprimované WebP, ~50 kB) | Súkromná cache | Synchronizačné úložisko |
+| Fotografie tiráže / OCR podklady | Súkromný priečinok | Synchronizačné úložisko (voliteľne) |
+| Súbory PDF/EPUB | **Používateľom zvolený verejný priečinok**, napr. `Dokumenty/Knihy` (Storage Access Framework) | Rovnaký priečinok – súbory sa pri odinštalovaní nemažú; voliteľne aj synchronizačné úložisko |
+| Nastavenia | DataStore | Synchronizačné úložisko + Auto Backup |
+
+Súbory e-kníh sa identifikujú **hashom obsahu (SHA-256)**, nie cestou. Po reinštalácii alebo presune súboru sa preto anotácie a pozícia čítania znovu pripoja k správnemu súboru.
+
+### 4.3 Synchronizácia
+
+Model je „local-first“: zdrojom pravdy je lokálna databáza na každom zariadení; úložisko slúži ako schránka na výmenu zmien.
+
+- Každá zmena sa zapíše do **žurnálu** (záznam = entita, pole, nová hodnota, čas, zariadenie). Zariadenie posiela do úložiska vlastné súbory žurnálu a číta súbory ostatných zariadení.
+- **Riešenie konfliktov:** na úrovni poľa platí posledná zmena (LWW). Anotácie a relácie čítania sa iba pridávajú, takže nekolidujú. Pri pozícii čítania vyhráva najnovšia, pri pokroku najvyššia hodnota.
+- Raz za čas sa vytvorí **snímok** celej databázy, aby nové zariadenie nemuselo prehrávať celý žurnál.
+- Spúšťa sa pri zmene (s oneskorením niekoľkých sekúnd), pri otvorení aplikácie a periodicky cez WorkManager; iba na Wi-Fi je voliteľné.
+- **Šifrovanie end-to-end** (voliteľné, heslo používateľa): úložisko vidí iba šifrované súbory.
+
+Možné transporty (implementuje sa spoločné rozhranie, prvý transport podľa voľby používateľa):
+
+| Transport | Výhody | Nevýhody |
+|---|---|---|
+| **Google Drive – `appDataFolder`** | Bez servera, väčšina používateľov Androidu ho má; skrytý priečinok, používateľ ho omylom nezmaže | Väzba na Google; nie je F-Droid kompatibilný |
+| **WebDAV (Nextcloud, ownCloud, Synology, Koofr…)** | Otvorený štandard, vlastné alebo európske úložisko | Treba mať účet alebo server |
+| **Priečinok (Syncthing)** | Úplne bez cloudu, P2P | Vyžaduje ďalšiu aplikáciu a súčasne zapnuté zariadenia |
+| Dropbox / OneDrive | Rozšírené | Ďalšie OAuth integrácie, neskoršia etapa |
+
+### 4.4 Tok obnovy (nový telefón alebo reinštalácia)
+
+1. Pri prvom spustení obrazovka **Vitaj**: *Začať novú knižnicu* · *Obnoviť zo synchronizácie* · *Obnoviť zo súboru zálohy*.
+2. *Obnoviť zo synchronizácie* → prihlásenie k úložisku → (heslo k šifrovaniu) → stiahnutie snímku a žurnálu s ukazovateľom priebehu. Katalóg je použiteľný hneď, obálky sa doťahujú na pozadí.
+3. Výzva **Pripojiť priečinok s e-knihami**. Oprávnenie na prístup k priečinku sa reinštaláciou stráca, preto si ho aplikácia vyžiada znovu; následne spáruje súbory podľa hashu.
+4. Obnovia sa naplánované pripomienky (alarmy reinštaláciu neprežijú, preto sa vždy prepočítajú z databázy).
+
+Nezávisle od synchronizácie zostáva **ručný export** celej knižnice do jedného súboru (ZIP: JSON + obálky) a čitateľný export katalógu do CSV ako posledná poistka.
+
+---
+
+## 5. Stavy čítania – návrh terminológie
 
 Pôvodné zadanie uvádza *rozčítaná*, *aktuálne čítam*, *v pláne*. Pojmy „rozčítaná“ a „aktuálne čítam“ sa čiastočne prekrývajú, preto navrhujem jednoznačné vymedzenie:
 
@@ -76,7 +130,7 @@ Automatika: ak sa kniha v stave *Čítam* neotvorí 14 dní (nastaviteľné), ap
 
 ---
 
-## 5. Informačná architektúra a navigácia
+## 6. Informačná architektúra a navigácia
 
 Spodná navigačná lišta (na tablete navigačný rail) so štyrmi cieľmi a centrálnym tlačidlom pridania:
 
@@ -98,9 +152,9 @@ Nastavenia a záloha sú v menu profilu (ikona v hornej lište Domova).
 
 ---
 
-## 6. Kľúčové obrazovky (drôtené modely)
+## 7. Kľúčové obrazovky (drôtené modely)
 
-### 6.1 Domov
+### 7.1 Domov
 
 ```
 ┌────────────────────────────────┐
@@ -120,14 +174,14 @@ Nastavenia a záloha sú v menu profilu (ikona v hornej lište Domova).
 └────────────────────────────────┘
 ```
 
-### 6.2 Knižnica
+### 7.2 Knižnica
 
 - Prepínač zobrazenia: **mriežka obálok** / **kompaktný zoznam** / **police** (vizuálna metafora regálu).
 - Čipové filtre pod vyhľadávaním; aktívne filtre sú vždy viditeľné a jedným ťuknutím zrušiteľné.
 - Dlhé podržanie → hromadný výber (zmena stavu, štítku, police, odstránenie).
 - Na obálke malé indikátory: stav (bodka), formát (📄 PDF / 📖 EPUB / 📚 fyzická), požičaná.
 
-### 6.3 Detail knihy
+### 7.3 Detail knihy
 
 ```
 ┌────────────────────────────────┐
@@ -148,7 +202,7 @@ Nastavenia a záloha sú v menu profilu (ikona v hornej lište Domova).
 └────────────────────────────────┘
 ```
 
-### 6.4 Pridanie knihy skenom ISBN
+### 7.4 Pridanie knihy skenom ISBN
 
 Tok:
 
@@ -160,13 +214,13 @@ Tok:
 
 Duplicity: ak ISBN už v knižnici je, riadok sa označí „už máš“ s možnosťou pridať ďalší exemplár.
 
-### 6.5 Obálka
+### 7.5 Obálka
 
 - Automaticky: stiahnutie z Open Library → Google Books (najvyššie dostupné rozlíšenie).
 - Ručne: **Vyfotiť** (detekcia okrajov, korekcia perspektívy, orez na pomer 2:3), **Vybrať z galérie**, **Vygenerovať zástupnú** (typografická obálka z názvu a autora vo farbe odvodenej od žánru).
 - Pri EPUB/PDF: extrakcia obálky zo súboru (EPUB `cover-image`, PDF prvá strana).
 
-### 6.6 Čítačka
+### 7.6 Čítačka
 
 ```
 ┌────────────────────────────────┐
@@ -189,7 +243,7 @@ Ovládanie:
 - Obsah (TOC), zoznam anotácií a záložiek v bočnom paneli; fulltextové vyhľadávanie v knihe.
 - Automatický záznam **čítacej relácie** (čas, rozsah) – podklad pre štatistiky a odhad tempa.
 
-### 6.7 Anotácie
+### 7.7 Anotácie
 
 Typy: **zvýraznenie**, **podčiarknutie**, **poznámka** (k výberu alebo k strane), **záložka**, **kresba** (PDF).
 
@@ -204,7 +258,7 @@ Export:
 - **BibTeX / RIS** záznam knihy (Zotero, Citavi).
 - Pri PDF voliteľne „vypáliť“ anotácie do kópie súboru.
 
-### 6.8 Plán a pripomienky
+### 7.8 Plán a pripomienky
 
 Pri **Naplánovať** sa používateľ rozhodne medzi dvoma režimami:
 
@@ -215,7 +269,7 @@ Notifikácia obsahuje akcie **Čítať teraz** (otvorí čítačku na poslednej 
 
 ---
 
-## 7. Vizuálny jazyk
+## 8. Vizuálny jazyk
 
 - **Material 3** s dynamickými farbami; obálky kníh sú dominantný vizuálny prvok, UI okolo nich má byť tlmené.
 - Typografia: rozhranie v systémovom bezpätkovom písme; čítačka ponúka kvalitné pätkové písmo s podporou slovenskej diakritiky (napr. *Literata*, *Source Serif 4*) a bezpätkové (*Inter*), plus podporu **OpenDyslexic**.
@@ -225,40 +279,53 @@ Notifikácia obsahuje akcie **Čítať teraz** (otvorí čítačku na poslednej 
 
 ---
 
-## 8. Profesionálne odporúčania nad rámec zadania
+## 9. Profesionálne odporúčania nad rámec zadania
 
-1. **Evidencia fyzického umiestnenia** (miestnosť / regál / rad) – pri väčšej knižnici rozhoduje o použiteľnosti.
-2. **Výpožičky** – komu je kniha požičaná a od kedy, s pripomienkou vrátenia.
-3. **Séria a poradie** – automatické navrhnutie ďalšieho dielu do *V pláne*.
-4. **Import priečinka** (Storage Access Framework) – aplikácia sleduje zvolený priečinok a nové PDF/EPUB automaticky zaradí; kompatibilita s knižnicou Calibre (čítanie `metadata.opf`).
-5. **Záloha a synchronizácia bez cloudu** – export celej databázy + anotácií do jedného súboru (ZIP s JSON), voliteľne automaticky do priečinka synchronizovaného cez Syncthing/Nextcloud/Google Drive. Neskôr OPDS katalóg.
+Body 1–3 sú vzhľadom na prevahu fyzickej knižnice zaradené priamo do MVP (etapa 1).
+
+1. **Evidencia fyzického umiestnenia** (miestnosť / regál / rad) – pri väčšej knižnici rozhoduje o použiteľnosti. Režim **Inventúra**: zvolíš policu a skenuješ ISBN kníh, ktoré na nej stoja; aplikácia ich priradí k polici a upozorní na chýbajúce.
+2. **Výpožičky** – komu je exemplár požičaný a od kedy, s pripomienkou vrátenia (kontakt z adresára).
+3. **Rýchla poznámka k fyzickej knihe** – fotografia strany → OCR → zvýraznenie alebo poznámka s číslom strany. Anotácie tak nie sú obmedzené len na e-knihy; pokrok čítania tlačenej knihy sa zadáva číslom strany (posúvač alebo diktovanie).
+4. **Séria a poradie** – automatické navrhnutie ďalšieho dielu do *V pláne*.
+5. **Import priečinka** (Storage Access Framework) – aplikácia sleduje zvolený priečinok a nové PDF/EPUB automaticky zaradí; kompatibilita s knižnicou Calibre (čítanie `metadata.opf`). Neskôr OPDS katalóg.
 6. **Štatistiky** – čas čítania, tempo (strany/h), séria dní, ročný cieľ, rozloženie podľa žánrov; odhad dokončenia vychádza z reálneho tempa.
-7. **Rýchla poznámka k fyzickej knihe** – fotografia strany → OCR → poznámka s číslom strany. Anotácie tak nie sú obmedzené len na e-knihy.
+7. **Poistenie a hodnota zbierky** – voliteľná nákupná cena a dátum nadobudnutia, export zoznamu pre poistenie domácnosti.
 8. **Režim štúdia** – pri odbornej literatúre prepojenie anotácií s citáciami a export do Markdownu so zachovaním hierarchie kapitol.
 9. **Text-to-speech** cez systémový TTS engine (Readium to podporuje) s pokračovaním na pozadí.
 10. **Widget na plochu** – „Pokračovať v čítaní“ a dnešný cieľ.
 
 ---
 
-## 9. Etapy vývoja
+## 10. Etapy vývoja
 
 | Etapa | Obsah | Výstup |
 |---|---|---|
-| **0 – Prototyp UX** | Klikací prototyp kľúčových tokov (Figma alebo Compose preview), overenie navigácie. | Schválené obrazovky 6.1–6.4, 6.6. |
-| **1 – MVP katalóg** | Room model, sken ISBN, metadáta, obálky (stiahnutie + foto), knižnica, detail, stavy. | Použiteľná evidencia kníh. |
-| **2 – Čítačka** | Import PDF/EPUB, Readium, pozícia čítania, témy, záložky. | Čítanie s pamäťou pozície. |
-| **3 – Anotácie** | Zvýraznenia, poznámky, obrazovka Poznámky, export Markdown/citácie. | Študijné použitie. |
-| **4 – Plán** | Plány, notifikácie, relácie čítania, štatistiky, widget. | Pripomienky a prehľad. |
-| **5 – Rozšírenia** | Záloha/sync, výpožičky, police, OCR poznámky, TTS, OPDS. | Profesionálna verzia. |
+| **0 – Prototyp UX** | Klikací prototyp kľúčových tokov (Figma alebo Compose preview), overenie navigácie. | Schválené obrazovky 7.1–7.5 a tok obnovy 4.4. |
+| **1 – Katalóg fyzickej knižnice** | Room model so synchronizačnými poľami (UUID, `updatedAt`, tombstone), sken ISBN vrátane dávkového režimu, metadáta, obálky (stiahnutie + foto), knižnica, detail, stavy, exempláre, police a umiestnenie, výpožičky, ručný export/import. | Použiteľná evidencia kníh. |
+| **2 – Synchronizácia** | Žurnál zmien, snímky, prvý transport (podľa odpovede v kap. 11), obrazovka *Vitaj* s obnovou, šifrovanie, synchronizácia obálok. | Dáta prežijú reinštaláciu; telefón + tablet. |
+| **3 – Plán a pokrok** | Stavy s históriou, pokrok tlačenej knihy číslom strany, plány, notifikácie, relácie čítania, štatistiky, widget. | Pripomienky a prehľad. |
+| **4 – Čítačka** | Import PDF/EPUB, Readium, párovanie súborov hashom, pozícia čítania, témy, záložky. | Čítanie e-kníh. |
+| **5 – Anotácie** | Zvýraznenia, poznámky (aj OCR z fyzickej knihy), obrazovka Poznámky, export Markdown/citácie/BibTeX. | Študijné použitie. |
+| **6 – Rozšírenia** | Ďalšie transporty, inventúra, séria, TTS, OPDS, poistný export. | Profesionálna verzia. |
+
+Etapy 1 a 2 sa vyvíjajú tesne po sebe; synchronizácia sa nezapína v produkcii, kým nie je hotová obnova (4.4) – inak by hrozilo, že používateľ dôveruje neúplnej zálohe.
 
 CI: rovnaký princíp ako pri `RekalibracnyRezim` – GitHub Actions zostaví podpísaný APK pri zmene v adresári `Knihy/**`.
 
 ---
 
-## 10. Otvorené otázky
+## 11. Otvorené otázky
 
-1. Prevažuje fyzická knižnica, alebo e-knihy? (Ovplyvní poradie etáp 1 a 2.)
-2. Má byť synchronizácia medzi viacerými zariadeniami (telefón + tablet) už v prvých verziách?
-3. Ktorá citačná norma je primárna – ISO 690 (STN), APA, alebo iná?
-4. Akceptujú sa „pevné“ prepojenia na Google služby (Google Books API), alebo má byť aplikácia čisto open-source / F-Droid kompatibilná?
-5. Je potrebná ochrana aplikácie (biometria/PIN) pre súkromné poznámky?
+Zodpovedané (17. 11. 2026):
+
+- ~~Prevažuje fyzická knižnica, alebo e-knihy?~~ → **fyzická**; poradie etáp upravené.
+- ~~Synchronizácia už v prvých verziách?~~ → **áno**; doplnená kap. 4 a etapa 2.
+- ~~Kde budú dáta po reinštalácii?~~ → kap. 4.2 a 4.4.
+
+Otvorené:
+
+1. **Ktorý synchronizačný transport ako prvý** – Google Drive, WebDAV/Nextcloud, alebo Syncthing? (Kap. 4.3.)
+2. Ktorá citačná norma je primárna – ISO 690 (STN), APA, alebo iná?
+3. Akceptujú sa závislosti na Google službách (Google Books API, Drive), alebo má byť aplikácia čisto open-source / F-Droid kompatibilná?
+4. Je potrebná ochrana aplikácie (biometria/PIN) pre súkromné poznámky?
+5. Zapnúť šifrovanie synchronizácie predvolene? (Bezpečnejšie, no zabudnuté heslo znamená nemožnosť obnovy.)
